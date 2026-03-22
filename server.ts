@@ -1,10 +1,11 @@
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
-import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
 import cookieSession from 'cookie-session';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { initialTasks, initialLongTermTasks } from './src/initialData.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,10 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'checkhome-secret';
 
 const getOAuth2Client = (redirectUri?: string) => {
-  return new google.auth.OAuth2(
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Missing Google OAuth credentials');
+  }
+  return new OAuth2Client(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     redirectUri
@@ -43,63 +47,6 @@ const getRedirectUri = (req: express.Request) => {
 
 const DRIVE_FILE_NAME = 'checkhome_data.json';
 
-const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-
-const dailyTasksBase = [
-  { title: 'Hacer la cama y ventilar', assignee: 'Ambos', room: 'Dormitorio principal' },
-  { title: 'Recoger encimeras y lavavajillas', assignee: 'Ambos', room: 'Cocina' },
-  { title: 'Repaso rápido de mesas y cojines', assignee: 'Ambos', room: 'Salón' },
-];
-
-const generatedDailyTasks = daysOfWeek.flatMap(day => 
-  dailyTasksBase.map((task, index) => ({
-    id: `daily-${day.toLowerCase()}-${index}`,
-    title: task.title,
-    assignee: task.assignee,
-    room: task.room,
-    day: day,
-    isCompleted: 0
-  }))
-);
-
-const initialTasks = [
-  ...generatedDailyTasks,
-  { id: 'l1', title: 'Limpieza a fondo de encimeras y electrodomésticos', assignee: 'Laura', room: 'Cocina', day: 'Lunes', isCompleted: 0 },
-  { id: 'l2', title: 'Limpiar polvo, ordenar mesa y aspirar', assignee: 'Laura', room: 'Despacho Laura', day: 'Lunes', isCompleted: 0 },
-  { id: 'l3', title: 'Limpiar polvo, ordenar mesa y aspirar', assignee: 'Christian', room: 'Oficina Chris', day: 'Lunes', isCompleted: 0 },
-  { id: 'l4', title: 'Limpieza de sanitarios, lavabo y espejo', assignee: 'Christian', room: 'Aseo', day: 'Lunes', isCompleted: 0 },
-  { id: 'm1', title: 'Limpieza profunda (ducha, sanitarios, espejos)', assignee: 'Laura', room: 'Baño Lau', day: 'Martes', isCompleted: 0 },
-  { id: 'm2', title: 'Limpieza profunda (ducha, sanitarios, espejos)', assignee: 'Christian', room: 'Baño Chris', day: 'Martes', isCompleted: 0 },
-  { id: 'm3', title: 'Aspirar y fregar suelo', assignee: 'Laura', room: 'Dormitorio principal', day: 'Martes', isCompleted: 0 },
-  { id: 'm4', title: 'Ordenar ropa, limpiar polvo y aspirar', assignee: 'Christian', room: 'Vestidor', day: 'Martes', isCompleted: 0 },
-  { id: 'x1', title: 'Poner lavadoras, tender y doblar', assignee: 'Laura', room: 'Cuarto limpieza', day: 'Miércoles', isCompleted: 0 },
-  { id: 'x2', title: 'Limpiar cristales y quitar polvo a fondo', assignee: 'Christian', room: 'Salón', day: 'Miércoles', isCompleted: 0 },
-  { id: 'x3', title: 'Aspirar y fregar suelo', assignee: 'Laura', room: 'Pasillo (P+1)', day: 'Miércoles', isCompleted: 0 },
-  { id: 'x4', title: 'Aspirar y fregar peldaños', assignee: 'Christian', room: 'Escaleras interiores', day: 'Miércoles', isCompleted: 0 },
-  { id: 'j1', title: 'Barrer y limpiar mobiliario exterior', assignee: 'Laura', room: 'Porche delantero', day: 'Jueves', isCompleted: 0 },
-  { id: 'j2', title: 'Barrer y limpiar mobiliario exterior', assignee: 'Christian', room: 'Porche trasero', day: 'Jueves', isCompleted: 0 },
-  { id: 'j3', title: 'Aspirar y fregar suelo a fondo', assignee: 'Laura', room: 'Cocina', day: 'Jueves', isCompleted: 0 },
-  { id: 'j4', title: 'Aspirar y fregar suelo a fondo', assignee: 'Christian', room: 'Salón', day: 'Jueves', isCompleted: 0 },
-  { id: 'v1', title: 'Revisar caducidades, limpiar nevera y despensa', assignee: 'Laura', room: 'Cocina', day: 'Viernes', isCompleted: 0 },
-  { id: 'v2', title: 'Barrer, regar plantas y ordenar', assignee: 'Christian', room: 'Patio', day: 'Viernes', isCompleted: 0 },
-  { id: 'v3', title: 'Limpiar y organizar productos', assignee: 'Ambos', room: 'Cuarto limpieza', day: 'Viernes', isCompleted: 0 },
-  { id: 'v4', title: 'Aspirar y fregar suelo', assignee: 'Ambos', room: 'Recibidor/pasillo', day: 'Viernes', isCompleted: 0 },
-  { id: 's1', title: 'Barrer y organizar herramientas/cajas', assignee: 'Christian', room: 'Garaje', day: 'Sábado', isCompleted: 0 },
-  { id: 's2', title: 'Barrer o limpiar con manguera', assignee: 'Christian', room: 'Rampa garaje', day: 'Sábado', isCompleted: 0 },
-  { id: 's3', title: 'Organizar cajas y limpiar polvo', assignee: 'Laura', room: 'Trastero', day: 'Sábado', isCompleted: 0 },
-  { id: 's4', title: 'Mantenimiento general de plantas', assignee: 'Laura', room: 'Patio', day: 'Sábado', isCompleted: 0 },
-  { id: 'd5', title: 'Preparar menú semanal (Batch cooking)', assignee: 'Laura', room: 'Cocina', day: 'Domingo', isCompleted: 0 },
-  { id: 'd6', title: 'Sacar basuras y organizar reciclaje', assignee: 'Christian', room: 'Cuarto limpieza', day: 'Domingo', isCompleted: 0 },
-  { id: 'd7', title: 'Cambiar sábanas', assignee: 'Ambos', room: 'Dormitorio principal', day: 'Domingo', isCompleted: 0 },
-];
-
-const initialLongTermTasks = [
-  { id: 'lt1', title: 'Limpieza de filtros de aire acondicionado', assignee: 'Ambos', date: '2026-05-15', isCompleted: false },
-  { id: 'lt2', title: 'Limpieza profunda de horno', assignee: 'Laura', date: '2026-04-10', isCompleted: false },
-  { id: 'lt3', title: 'Revisión y limpieza de canalones', assignee: 'Christian', date: '2026-10-01', isCompleted: false },
-  { id: 'lt4', title: 'Limpieza de cortinas y estores', assignee: 'Ambos', date: '2026-06-20', isCompleted: false },
-];
-
 export const app = express();
 app.set('trust proxy', true);
 const PORT = 3000;
@@ -127,7 +74,8 @@ app.use(cookieSession({
 
 // Helper to get Drive client
 async function getDriveClient(tokens: any) {
-  const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+  const { google } = await import('googleapis');
+  const auth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
   auth.setCredentials(tokens);
   return google.drive({ version: 'v3', auth });
 }
@@ -190,22 +138,27 @@ async function saveDataToDrive(drive: any, fileId: string, data: any) {
 
 // Auth Routes
 app.get('/api/auth/google/url', (req, res) => {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    console.error('Missing Google OAuth credentials in environment variables');
-    return res.status(500).json({ 
-      error: 'Missing Google OAuth credentials',
-      details: 'Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment variables.'
+  try {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      console.error('Missing Google OAuth credentials in environment variables');
+      return res.status(500).json({ 
+        error: 'Missing Google OAuth credentials',
+        details: 'Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment variables.'
+      });
+    }
+    const redirectUri = getRedirectUri(req);
+    const oauth2Client = getOAuth2Client(redirectUri);
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['https://www.googleapis.com/auth/drive.file', 'openid', 'profile', 'email'],
+      prompt: 'consent',
+      redirect_uri: redirectUri
     });
+    res.json({ url });
+  } catch (error) {
+    console.error('Error generating auth URL:', error);
+    res.status(500).json({ error: 'Internal Server Error', details: error instanceof Error ? error.message : String(error) });
   }
-  const redirectUri = getRedirectUri(req);
-  const oauth2Client = getOAuth2Client(redirectUri);
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/drive.file', 'openid', 'profile', 'email'],
-    prompt: 'consent',
-    redirect_uri: redirectUri
-  });
-  res.json({ url });
 });
 
 app.get('/auth/callback', async (req, res) => {
