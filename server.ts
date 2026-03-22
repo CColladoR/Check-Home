@@ -1,10 +1,13 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import cors from 'cors';
 import { google } from 'googleapis';
 import cookieSession from 'cookie-session';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -172,6 +175,13 @@ async function saveDataToDrive(drive: any, fileId: string, data: any) {
 
 // Auth Routes
 app.get('/api/auth/google/url', (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    console.error('Missing Google OAuth credentials in environment variables');
+    return res.status(500).json({ 
+      error: 'Missing Google OAuth credentials',
+      details: 'Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment variables.'
+    });
+  }
   const redirectUri = getRedirectUri(req);
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -330,6 +340,7 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   async function startServer() {
     // Vite middleware for development
     if (process.env.NODE_ENV !== 'production') {
+      const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: 'spa',
@@ -337,10 +348,12 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
       app.use(vite.middlewares);
     } else {
       const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+        app.get('*', (req, res) => {
+          res.sendFile(path.join(distPath, 'index.html'));
+        });
+      }
     }
 
     app.listen(PORT, '0.0.0.0', () => {

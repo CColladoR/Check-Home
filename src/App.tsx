@@ -107,10 +107,23 @@ export default function App() {
   const handleLogin = async () => {
     try {
       const response = await fetch('/api/auth/google/url');
-      const { url } = await response.json();
-      window.open(url, 'google_login', 'width=500,height=600');
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('Login error data:', data);
+        alert(`Error al iniciar sesión: ${data.details || data.error || 'Error desconocido'}`);
+        return;
+      }
+      
+      if (data.url) {
+        window.open(data.url, 'google_login', 'width=500,height=600');
+      } else {
+        console.error('No URL in response:', data);
+        alert('No se pudo obtener la URL de autenticación.');
+      }
     } catch (error) {
       console.error('Login error:', error);
+      alert('Error de red al intentar iniciar sesión.');
     }
   };
 
