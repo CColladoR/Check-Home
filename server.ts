@@ -13,14 +13,18 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'checkhome-secret';
 
-const oauth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET
-);
+const getOAuth2Client = (redirectUri?: string) => {
+  return new google.auth.OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    redirectUri
+  );
+};
 
 const getRedirectUri = (req: express.Request) => {
   const xForwardedHost = req.get('x-forwarded-host');
   const host = xForwardedHost || req.get('host') || 'localhost:3000';
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
   
   if (host.includes('localhost')) {
     // If we have APP_URL, use it as the base for the redirect URI
@@ -32,8 +36,8 @@ const getRedirectUri = (req: express.Request) => {
     return `http://localhost:3000/auth/callback`;
   }
   
-  const uri = `https://${host}/auth/callback`;
-  console.log('Generated Redirect URI (final):', uri);
+  const uri = `${protocol}://${host}/auth/callback`;
+  console.log('Generated Redirect URI (final):', uri, 'Protocol:', protocol);
   return uri;
 };
 
@@ -102,6 +106,17 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
+
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    env: process.env.NODE_ENV, 
+    vercel: !!process.env.VERCEL,
+    hasClientId: !!GOOGLE_CLIENT_ID,
+    hasClientSecret: !!GOOGLE_CLIENT_SECRET
+  });
+});
+
 app.use(cookieSession({
   name: 'session',
   keys: [COOKIE_SECRET],
@@ -183,6 +198,7 @@ app.get('/api/auth/google/url', (req, res) => {
     });
   }
   const redirectUri = getRedirectUri(req);
+  const oauth2Client = getOAuth2Client(redirectUri);
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/drive.file', 'openid', 'profile', 'email'],
@@ -195,6 +211,7 @@ app.get('/api/auth/google/url', (req, res) => {
 app.get('/auth/callback', async (req, res) => {
   const { code } = req.query;
   const redirectUri = getRedirectUri(req);
+  const oauth2Client = getOAuth2Client(redirectUri);
   console.log('OAuth Callback - Code received');
   try {
     const { tokens } = await oauth2Client.getToken({

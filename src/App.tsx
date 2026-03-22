@@ -107,13 +107,22 @@ export default function App() {
   const handleLogin = async () => {
     try {
       const response = await fetch('/api/auth/google/url');
-      const data = await response.json();
       
       if (!response.ok) {
-        console.error('Login error data:', data);
-        alert(`Error al iniciar sesión: ${data.details || data.error || 'Error desconocido'}`);
+        const text = await response.text();
+        console.error('Login error response:', text);
+        let errorMsg = 'Error del servidor';
+        try {
+          const data = JSON.parse(text);
+          errorMsg = data.details || data.error || errorMsg;
+        } catch (e) {
+          errorMsg = text.substring(0, 100) || errorMsg;
+        }
+        alert(`Error al iniciar sesión (${response.status}): ${errorMsg}`);
         return;
       }
+
+      const data = await response.json();
       
       if (data.url) {
         window.open(data.url, 'google_login', 'width=500,height=600');
@@ -123,7 +132,7 @@ export default function App() {
       }
     } catch (error) {
       console.error('Login error:', error);
-      alert('Error de red al intentar iniciar sesión.');
+      alert(`Error de red o de sistema: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
